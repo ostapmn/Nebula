@@ -73,6 +73,12 @@ CASES = [
         lambda d: d.requires_review and "multi_topic" in d.applied_rules,
     ),
     (
+        "a secondary aspect is not the same as a second request",
+        model_said(category="account_access", recommended_action="route_to_account_support",
+                   secondary_categories=["technical_bug"], is_multi_topic=False),
+        lambda d: "multi_topic" not in d.applied_rules and not d.requires_review,
+    ),
+    (
         "nobody gets a template while they are shouting",
         model_said(sentiment="abusive"),
         lambda d: d.action != "auto_reply_kb" and d.requires_review,

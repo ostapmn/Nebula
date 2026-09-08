@@ -82,7 +82,12 @@ def apply(result: dict[str, Any], schema_violations: list[str] | None = None) ->
     sentiment = result.get("sentiment", "calm")
     confidence = float(result.get("confidence", 0.0))
     secondary = list(result.get("secondary_categories") or [])
-    multi_topic = bool(result.get("is_multi_topic")) or bool(secondary)
+    # Trust the model's own `is_multi_topic` judgement rather than inferring it
+    # from a non-empty `secondary_categories`. The two fields mean different
+    # things by design: "another category is present in the text" is not the same
+    # as "there is a second actionable request". Deriving one from the other sent
+    # every ticket with a secondary aspect to review — see docs/model-comparison.md.
+    multi_topic = bool(result.get("is_multi_topic"))
     safety_signal = bool(result.get("contains_safety_signal"))
 
     # Two separate jobs, both keyed off the raw value the model returned.
@@ -129,7 +134,7 @@ def apply(result: dict[str, Any], schema_violations: list[str] | None = None) ->
 
     # 4. More than one request in one ticket: single-route triage would drop part of it.
     if multi_topic:
-        flag("multi_topic", f"ticket also covers {secondary or 'another topic'}")
+        flag("multi_topic", f"ticket contains several requests: {secondary or 'see text'}")
 
     # 5. The model is not sure enough to route unattended.
     if confidence < CONFIDENCE_REVIEW_THRESHOLD:
@@ -156,3 +161,22 @@ def apply(result: dict[str, Any], schema_violations: list[str] | None = None) ->
             flag("auto_reply_gate_failed", "did not meet the bar for an automated reply")
 
     return decision
+
+
+def fallback_decision(reason: str) -> Decision:
+    """The routing decision used when the classifier produced nothing usable.
+
+    A ticket that could not be classified must not disappear, and must not be
+    guessed at. It goes to tier-1 support at P2 — the level that assumes neither
+    an emergency nor something ignorable — flagged for review with the reason
+    the classifier gave. This is what the system does on a timeout, a rate limit
+    that survived every retry, or a response that failed its schema.
+    """
+    return Decision(
+        category="unclear_other",
+        priority="P2",
+        action="route_to_general_support",
+        requires_review=True,
+        review_reasons=[f"automatic classification failed: {reason}"],
+        applied_rules=["classification_failed"],
+    )

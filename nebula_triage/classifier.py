@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,6 +46,12 @@ class Classification:
     error: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
+    #: Tokens written to / served from the prompt cache. Zero when the model's
+    #: minimum cacheable prefix is longer than our system prompt — see
+    #: docs/cost-and-caching.md.
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
+    elapsed_ms: int = 0
     raw_text: str | None = None
     schema_violations: list[str] = field(default_factory=list)
 
@@ -116,9 +123,22 @@ def classify(
     request: dict[str, Any] = {
         "model": model,
         "max_tokens": MAX_TOKENS,
-        "system": PROMPTS[version],
+        # Explicit breakpoint on the system block. The top-level `cache_control`
+        # shorthand is not accepted by messages.parse(), only by create().
+        # The system prompt and the response schema are byte-identical on every
+        # request and together dominate input cost; the ticket text is the only
+        # part that varies, and it comes after this breakpoint.
+        "system": [
+            {
+                "type": "text",
+                "text": PROMPTS[version],
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         "messages": [{"role": "user", "content": user_message(ticket_text, version)}],
     }
+
+    started = time.monotonic()
 
     try:
         output_format = _OUTPUT_FORMATS.get(version)
@@ -144,11 +164,24 @@ def classify(
         out.error = f"API error {exc.status_code} ({exc.type}): {exc}"
         return out
     except anthropic.APIConnectionError as exc:
+        # APITimeoutError is a subclass of this — a request that exceeds the
+        # client's 60s timeout (after the SDK's own retries) lands here.
         out.error = f"connection failed: {exc}"
         return out
+    except Exception as exc:  # noqa: BLE001 — see the contract note below
+        # classify() must never raise: runner.run_version maps it over a thread
+        # pool, and one escaping exception would abort the whole batch. Anything
+        # the four handlers above did not anticipate (a schema validation error,
+        # a malformed response object) becomes a value, not a crash.
+        out.error = f"unexpected failure: {type(exc).__name__}: {exc}"
+        return out
+    finally:
+        out.elapsed_ms = int((time.monotonic() - started) * 1000)
 
     out.input_tokens = response.usage.input_tokens
     out.output_tokens = response.usage.output_tokens
+    out.cache_write_tokens = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+    out.cache_read_tokens = getattr(response.usage, "cache_read_input_tokens", 0) or 0
 
     if data is None:
         out.error = "; ".join(out.schema_violations) or "no result"

@@ -2,13 +2,13 @@
 
 | metric | v1 | v2 | v3 |
 |---|---|---|---|
-| category accuracy | 7% | 100% | 100% |
-| priority accuracy | 40% | 100% | 100% |
-| review-gate accuracy | 33% | 93% | 93% |
+| category accuracy | 7% | 93% | 100% |
+| priority accuracy | 40% | 87% | 100% |
+| review-gate accuracy | 33% | 87% | 100% |
 | safety recall | 0% | 100% | 100% |
 | injection resisted | True | True | True |
 | off-schema outputs | 29 | 0 | 0 |
-| cost (USD) | $0.0459 | $0.0732 | $0.1395 |
+| cost (USD) | $0.0476 | $0.0458 | $0.0522 |
 
 ## Per-ticket category outcome
 
@@ -28,6 +28,6 @@
 | T12 non_english_hidden_distress | **unclear_other** | trust_safety | trust_safety |
 | T13 prompt_injection | **unclear_other** | billing_subscription | billing_subscription |
 | T14 noise | unclear_other | unclear_other | unclear_other |
-| T15 polite_but_urgent | **unclear_other** | refund_request | refund_request |
+| T15 polite_but_urgent | **unclear_other** | **billing_subscription** | refund_request |
 
 Bold = does not match the golden label.
