@@ -15,6 +15,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env    # вписати ANTHROPIC_API_KEY
 ```
 
+Windows (PowerShell) — далі в усіх командах замініть `.venv/bin/python` на
+`.venv\Scripts\python`:
+
+```powershell
+python -m venv .venv; .venv\Scripts\pip install -r requirements.txt
+copy .env.example .env
+```
+
 Один тікет:
 
 ```bash
